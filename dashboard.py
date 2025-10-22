@@ -14,7 +14,7 @@ st.set_page_config(page_title="AI-Powered Crypto Dashboard", layout="wide")
 st.title("📊 AI-Powered Crypto Market Dashboard")
 st.subheader("Live cryptocurrency data with narrative insights")
 
-# --- Safe database connection ---
+# --- Safe Database Connection ---
 def get_connection():
     try:
         conn = sqlite3.connect(DB_PATH, check_same_thread=False)
@@ -143,6 +143,12 @@ with tab2:
 
         plot_df = hist_df[hist_df["Name"].isin(coins)].copy()
 
+        # ✅ Ensure snapshot is datetime and sorted
+        plot_df["snapshot"] = pd.to_datetime(plot_df["snapshot"], errors="coerce")
+        plot_df = plot_df.sort_values("snapshot")
+
+        alt.data_transformers.disable_max_rows()
+
         if col_name in plot_df.columns:
             plot_df[col_name] = (
                 plot_df[col_name]
@@ -151,15 +157,11 @@ with tab2:
                 .astype(float)
             )
 
-            # ✅ Use snapshot sequence on X-axis
-            if "snapshot" not in plot_df.columns:
-                plot_df["snapshot"] = range(1, len(plot_df) + 1)
-
             chart = (
                 alt.Chart(plot_df)
                 .mark_line(point=True)
                 .encode(
-                    x=alt.X("snapshot:N", title="Snapshot"),
+                    x=alt.X("snapshot:T", title="Snapshot Timestamp"),
                     y=alt.Y(f"{col_name}:Q", title=f"{selected_timeframe} Change (%)"),
                     color=alt.Color("Name:N", title="Cryptocurrency"),
                     tooltip=["Name", col_name, "snapshot"]
@@ -176,9 +178,15 @@ with tab2:
         csv = hist_df.to_csv(index=False).encode("utf-8")
         st.download_button("Download CSV", data=csv, file_name="crypto_history.csv", mime="text/csv")
 
+        # ✅ Safer Excel Export
         excel_buffer = BytesIO()
-        with pd.ExcelWriter(excel_buffer, engine="xlsxwriter") as writer:
-            hist_df.to_excel(writer, index=False, sheet_name="Snapshots")
+        try:
+            with pd.ExcelWriter(excel_buffer, engine="xlsxwriter") as writer:
+                hist_df.to_excel(writer, index=False, sheet_name="Snapshots")
+        except ModuleNotFoundError:
+            with pd.ExcelWriter(excel_buffer, engine="openpyxl") as writer:
+                hist_df.to_excel(writer, index=False, sheet_name="Snapshots")
+
         st.download_button(
             "Download Excel",
             data=excel_buffer.getvalue(),
