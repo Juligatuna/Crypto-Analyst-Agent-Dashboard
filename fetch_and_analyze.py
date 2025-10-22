@@ -66,6 +66,10 @@ def fetch_crypto_data():
         })
 
     df = pd.DataFrame(results)
+
+    # ✅ Ensure timestamp is added for historical tracking
+    df["timestamp"] = pd.Timestamp.now()
+
     return df
 
 def generate_insights(df):

@@ -23,6 +23,9 @@ with tab1:
     # Fetch live data
     df = fa.fetch_crypto_data()
 
+    # Add timestamp for historical tracking
+    df["timestamp"] = pd.Timestamp.now()
+
     # Save snapshot to SQLite
     conn = sqlite3.connect(DB_PATH)
     df.to_sql("crypto_snapshots", conn, if_exists="append", index=False)
@@ -119,18 +122,23 @@ with tab2:
             .str.replace("%", "", regex=False)
             .astype(float)
         )
-        plot_df["Snapshot"] = range(1, len(plot_df) + 1)
 
-        # Plot with Altair
+        # ✅ Use timestamp for x-axis (not snapshot)
+        if "timestamp" in plot_df.columns:
+            plot_df["timestamp"] = pd.to_datetime(plot_df["timestamp"])
+        else:
+            plot_df["timestamp"] = pd.to_datetime("now")
+
+        # Plot with Altair (time-based)
         if not plot_df.empty:
             chart = (
                 alt.Chart(plot_df)
                 .mark_line(point=True)
                 .encode(
-                    x=alt.X("Snapshot:Q", title="Snapshot Number"),
+                    x=alt.X("timestamp:T", title="Time"),
                     y=alt.Y(f"{col_name}:Q", title=f"{selected_timeframe} Change (%)"),
                     color=alt.Color("Name:N", title="Cryptocurrency"),
-                    tooltip=["Name", col_name, "Snapshot"]
+                    tooltip=["Name", col_name, "timestamp"]
                 )
                 .properties(height=400)
                 .interactive()
