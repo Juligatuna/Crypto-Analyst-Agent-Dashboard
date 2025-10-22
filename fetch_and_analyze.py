@@ -1,4 +1,3 @@
-# fetch_and_analyze.py
 
 import os
 import requests
