@@ -34,7 +34,7 @@ tab1, tab2 = st.tabs(["Live Market", "Historical Data"])
 with tab1:
     df = fa.fetch_crypto_data()
 
-    # Add snapshot ID for tracking (instead of timestamp)
+    # Add snapshot timestamp for tracking
     df["snapshot"] = pd.Timestamp.now().strftime("%Y-%m-%d %H:%M:%S")
 
     # Save snapshot to SQLite
@@ -73,8 +73,11 @@ with tab1:
                 style[i] += "; background-color: #f8d7da"
         return style
 
+    # ✅ Hide internal tracking columns before display
+    display_df = df.drop(columns=["timestamp", "snapshot"], errors="ignore")
+
     # Display styled table
-    st.dataframe(df.style.apply(highlight_gainers_losers, axis=1))
+    st.dataframe(display_df.style.apply(highlight_gainers_losers, axis=1))
 
     # Market insights
     insights = fa.generate_insights(df)
@@ -148,7 +151,7 @@ with tab2:
                 .astype(float)
             )
 
-            # ✅ Revert to “snapshot” axis
+            # ✅ Use snapshot sequence on X-axis
             if "snapshot" not in plot_df.columns:
                 plot_df["snapshot"] = range(1, len(plot_df) + 1)
 
