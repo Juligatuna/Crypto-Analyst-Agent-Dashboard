@@ -1,4 +1,3 @@
-
 import os
 import requests
 import pandas as pd
@@ -44,9 +43,13 @@ def fetch_crypto_data():
         "price_change_percentage": "1h,24h,7d,14d,30d"
     }
 
-    response = requests.get(API_URL, params=params)
-    response.raise_for_status()
-    data = response.json()
+    try:
+        response = requests.get(API_URL, params=params, timeout=10)
+        response.raise_for_status()
+        data = response.json()
+    except requests.exceptions.RequestException as e:
+        print(f"⚠️ Error fetching data from CoinGecko: {e}")
+        return pd.DataFrame()
 
     results = []
     for coin in data:
@@ -67,6 +70,9 @@ def fetch_crypto_data():
 
 def generate_insights(df):
     """Generate narrative insights and highlight key market movements."""
+    if df.empty:
+        return "⚠️ No data available from CoinGecko. Please try again later."
+
     narrative = "🧠 Insight: "
 
     major_coins = ["Bitcoin", "Ethereum", "BNB"]
