@@ -1,12 +1,14 @@
-
 import streamlit as st
 import pandas as pd
 import sqlite3
 import fetch_and_analyze as fa
 from io import BytesIO
+import altair as alt  # ✅ Added for better trend visualization
 
+# --- Database Path ---
 DB_PATH = "crypto_data.db"
 
+# --- Streamlit Page Setup ---
 st.set_page_config(page_title="AI-Powered Crypto Dashboard", layout="wide")
 st.title("📊 AI-Powered Crypto Market Dashboard")
 st.subheader("Live cryptocurrency data with narrative insights")
@@ -14,7 +16,9 @@ st.subheader("Live cryptocurrency data with narrative insights")
 # --- Tabs ---
 tab1, tab2 = st.tabs(["Live Market", "Historical Data"])
 
-# --- LIVE MARKET TAB ---
+# =============================
+# 🔹 TAB 1: LIVE MARKET
+# =============================
 with tab1:
     # Fetch live data
     df = fa.fetch_crypto_data()
@@ -49,6 +53,7 @@ with tab1:
                 style[i] += "; background-color: #f8d7da"
         return style
 
+    # Display styled dataframe
     st.dataframe(df.style.apply(highlight_gainers_losers, axis=1))
 
     # Generate and display narrative insights
@@ -57,7 +62,7 @@ with tab1:
     st.subheader("🤖 Market Insights")
     st.markdown(insights)
 
-    # Save sentiment to database
+    # Save sentiment/insights to database
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute("""
@@ -71,7 +76,9 @@ with tab1:
     conn.commit()
     conn.close()
 
-# --- HISTORICAL DATA TAB ---
+# =============================
+# 🔹 TAB 2: HISTORICAL DATA
+# =============================
 with tab2:
     conn = sqlite3.connect(DB_PATH)
     hist_df = pd.read_sql("SELECT * FROM crypto_snapshots", conn)
@@ -87,7 +94,11 @@ with tab2:
         st.subheader("📈 Multi-Coin Trend Chart")
 
         # Select coins to plot
-        coins = st.multiselect("Select Coins", hist_df["Name"].unique().tolist(), default=hist_df["Name"].unique().tolist())
+        coins = st.multiselect(
+            "Select Coins",
+            hist_df["Name"].unique().tolist(),
+            default=hist_df["Name"].unique().tolist()
+        )
 
         # Select timeframe
         timeframe_map = {
@@ -102,20 +113,48 @@ with tab2:
 
         # Prepare data for plotting
         plot_df = hist_df[hist_df["Name"].isin(coins)].copy()
-        for coin in coins:
-            mask = plot_df["Name"] == coin
-            plot_df.loc[mask, col_name] = pd.to_numeric(plot_df.loc[mask, col_name].str.replace("%", ""), errors="coerce")
+        plot_df[col_name] = (
+            plot_df[col_name]
+            .astype(str)
+            .str.replace("%", "", regex=False)
+            .astype(float)
+        )
         plot_df["Snapshot"] = range(1, len(plot_df) + 1)
 
-        # Pivot and plot
-        st.line_chart(plot_df.pivot(index="Snapshot", columns="Name", values=col_name))
+        # Plot with Altair
+        if not plot_df.empty:
+            chart = (
+                alt.Chart(plot_df)
+                .mark_line(point=True)
+                .encode(
+                    x=alt.X("Snapshot:Q", title="Snapshot Number"),
+                    y=alt.Y(f"{col_name}:Q", title=f"{selected_timeframe} Change (%)"),
+                    color=alt.Color("Name:N", title="Cryptocurrency"),
+                    tooltip=["Name", col_name, "Snapshot"]
+                )
+                .properties(height=400)
+                .interactive()
+            )
+            st.altair_chart(chart, use_container_width=True)
+        else:
+            st.info("No data available for the selected coins or timeframe.")
 
         # --- Export Options ---
         st.subheader("💾 Export Historical Data")
         csv = hist_df.to_csv(index=False).encode("utf-8")
-        st.download_button("Download CSV", data=csv, file_name="crypto_history.csv", mime="text/csv")
+        st.download_button(
+            "Download CSV",
+            data=csv,
+            file_name="crypto_history.csv",
+            mime="text/csv"
+        )
 
         excel_buffer = BytesIO()
         with pd.ExcelWriter(excel_buffer, engine="xlsxwriter") as writer:
             hist_df.to_excel(writer, index=False, sheet_name="Snapshots")
-        st.download_button("Download Excel", data=excel_buffer.getvalue(), file_name="crypto_history.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        st.download_button(
+            "Download Excel",
+            data=excel_buffer.getvalue(),
+            file_name="crypto_history.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
