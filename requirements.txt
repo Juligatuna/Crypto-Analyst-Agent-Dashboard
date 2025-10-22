@@ -2,6 +2,5 @@ streamlit
 pandas
 requests
 python-dotenv
-altair
 xlsxwriter
-sqlite3-binary
+altair
