@@ -125,53 +125,44 @@ with tab2:
         # --- Trend Visualization ---
         st.subheader("📈 Multi-Coin Trend Chart")
 
-        coins = st.multiselect(
-            "Select Coins",
-            hist_df["Name"].unique().tolist(),
-            default=hist_df["Name"].unique().tolist()
-        )
-
-        timeframe_map = {
-            "1h": "📈 1h Change",
-            "24h": "📉 24h Change",
-            "7d": "📆 7d Change",
-            "14d": "📆 14d Change",
-            "30d": "📆 30d Change"
-        }
-        selected_timeframe = st.selectbox("Select Timeframe", list(timeframe_map.keys()))
-        col_name = timeframe_map[selected_timeframe]
-
-        plot_df = hist_df[hist_df["Name"].isin(coins)].copy()
-
-        # ✅ Ensure snapshot is datetime and sorted
-        plot_df["snapshot"] = pd.to_datetime(plot_df["snapshot"], errors="coerce")
-        plot_df = plot_df.sort_values("snapshot")
-
+        # ✅ Use correct columns and types for Altair
         alt.data_transformers.disable_max_rows()
 
-        if col_name in plot_df.columns:
-            plot_df[col_name] = (
-                plot_df[col_name]
-                .astype(str)
-                .str.replace("%", "", regex=False)
-                .astype(float)
-            )
+        # Check basic columns
+        name_col = "Name" if "Name" in hist_df.columns else "Coin"
+        price_col = "💰 Price" if "💰 Price" in hist_df.columns else "Price"
 
+        # Ensure timestamp/snapshot exists
+        if "snapshot" not in hist_df.columns and "Timestamp" in hist_df.columns:
+            hist_df["snapshot"] = hist_df["Timestamp"]
+        hist_df["snapshot"] = pd.to_datetime(hist_df["snapshot"], errors="coerce")
+
+        # Clean data
+        hist_df[price_col] = pd.to_numeric(hist_df[price_col], errors="coerce")
+        hist_df = hist_df.dropna(subset=["snapshot", price_col, name_col])
+
+        # User selects coins
+        coins = hist_df[name_col].unique().tolist()
+        selected_coins = st.multiselect("Select Coins", coins, default=coins[:3])
+
+        plot_df = hist_df[hist_df[name_col].isin(selected_coins)]
+
+        if not plot_df.empty:
             chart = (
                 alt.Chart(plot_df)
                 .mark_line(point=True)
                 .encode(
-                    x=alt.X("snapshot:T", title="Snapshot Timestamp"),
-                    y=alt.Y(f"{col_name}:Q", title=f"{selected_timeframe} Change (%)"),
-                    color=alt.Color("Name:N", title="Cryptocurrency"),
-                    tooltip=["Name", col_name, "snapshot"]
+                    x=alt.X("snapshot:T", title="Snapshot Time"),
+                    y=alt.Y(f"{price_col}:Q", title="Price (USD)", scale=alt.Scale(zero=False)),
+                    color=alt.Color(f"{name_col}:N", title="Cryptocurrency"),
+                    tooltip=[name_col, price_col, "snapshot"]
                 )
-                .properties(height=400)
+                .properties(height=400, title="Multi-Coin Price Trend")
                 .interactive()
             )
             st.altair_chart(chart, use_container_width=True)
         else:
-            st.info("⚠️ Selected timeframe data unavailable.")
+            st.info("⚠️ No data available for selected coins or timeframe.")
 
         # --- Export Options ---
         st.subheader("💾 Export Historical Data")
@@ -184,7 +175,7 @@ with tab2:
             with pd.ExcelWriter(excel_buffer, engine="xlsxwriter") as writer:
                 hist_df.to_excel(writer, index=False, sheet_name="Snapshots")
         except ModuleNotFoundError:
-            with pd.ExcelWriter(excel_buffer, engine="openpyxl") as writer:
+            with pd.ExcelWriter(excel_buffer) as writer:  # fallback to openpyxl
                 hist_df.to_excel(writer, index=False, sheet_name="Snapshots")
 
         st.download_button(
