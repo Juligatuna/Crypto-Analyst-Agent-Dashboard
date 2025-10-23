@@ -125,57 +125,56 @@ with tab2:
         # --- Trend Visualization ---
         st.subheader("📈 Multi-Coin Trend Chart")
 
-        # ✅ Use correct columns and types for Altair
         alt.data_transformers.disable_max_rows()
 
-        # Check basic columns
-        name_col = "Name" if "Name" in hist_df.columns else "Coin"
-        price_col = "💰 Price" if "💰 Price" in hist_df.columns else "Price"
+        # ✅ Detect column names safely
+        name_col = next((c for c in hist_df.columns if "name" in c.lower()), None)
+        snapshot_col = next((c for c in hist_df.columns if "snapshot" in c.lower() or "timestamp" in c.lower()), None)
 
-        # Ensure timestamp/snapshot exists
-        if "snapshot" not in hist_df.columns and "Timestamp" in hist_df.columns:
-            hist_df["snapshot"] = hist_df["Timestamp"]
-        hist_df["snapshot"] = pd.to_datetime(hist_df["snapshot"], errors="coerce")
+        # Find a column that looks like price
+        price_candidates = [c for c in hist_df.columns if "price" in c.lower()]
+        price_col = price_candidates[0] if price_candidates else None
 
-        # Clean data
-        hist_df[price_col] = pd.to_numeric(hist_df[price_col], errors="coerce")
-        hist_df = hist_df.dropna(subset=["snapshot", price_col, name_col])
-
-        # User selects coins
-        coins = hist_df[name_col].unique().tolist()
-        selected_coins = st.multiselect("Select Coins", coins, default=coins[:3])
-
-        plot_df = hist_df[hist_df[name_col].isin(selected_coins)]
-
-        if not plot_df.empty:
-            chart = (
-                alt.Chart(plot_df)
-                .mark_line(point=True)
-                .encode(
-                    x=alt.X("snapshot:T", title="Snapshot Time"),
-                    y=alt.Y(f"{price_col}:Q", title="Price (USD)", scale=alt.Scale(zero=False)),
-                    color=alt.Color(f"{name_col}:N", title="Cryptocurrency"),
-                    tooltip=[name_col, price_col, "snapshot"]
-                )
-                .properties(height=400, title="Multi-Coin Price Trend")
-                .interactive()
-            )
-            st.altair_chart(chart, use_container_width=True)
+        if not all([name_col, snapshot_col, price_col]):
+            st.error("⚠️ Missing expected columns (Name, Snapshot, or Price). Please verify database structure.")
         else:
-            st.info("⚠️ No data available for selected coins or timeframe.")
+            hist_df[snapshot_col] = pd.to_datetime(hist_df[snapshot_col], errors="coerce")
+            hist_df[price_col] = pd.to_numeric(hist_df[price_col], errors="coerce")
+            hist_df = hist_df.dropna(subset=[snapshot_col, price_col, name_col])
+
+            coins = hist_df[name_col].unique().tolist()
+            selected_coins = st.multiselect("Select Coins", coins, default=coins[:3])
+
+            plot_df = hist_df[hist_df[name_col].isin(selected_coins)]
+
+            if not plot_df.empty:
+                chart = (
+                    alt.Chart(plot_df)
+                    .mark_line(point=True)
+                    .encode(
+                        x=alt.X(f"{snapshot_col}:T", title="Snapshot Time"),
+                        y=alt.Y(f"{price_col}:Q", title="Price (USD)", scale=alt.Scale(zero=False)),
+                        color=alt.Color(f"{name_col}:N", title="Cryptocurrency"),
+                        tooltip=[name_col, price_col, snapshot_col]
+                    )
+                    .properties(height=400, title="Multi-Coin Price Trend")
+                    .interactive()
+                )
+                st.altair_chart(chart, use_container_width=True)
+            else:
+                st.info("⚠️ No data available for selected coins or timeframe.")
 
         # --- Export Options ---
         st.subheader("💾 Export Historical Data")
         csv = hist_df.to_csv(index=False).encode("utf-8")
         st.download_button("Download CSV", data=csv, file_name="crypto_history.csv", mime="text/csv")
 
-        # ✅ Safer Excel Export
         excel_buffer = BytesIO()
         try:
             with pd.ExcelWriter(excel_buffer, engine="xlsxwriter") as writer:
                 hist_df.to_excel(writer, index=False, sheet_name="Snapshots")
         except ModuleNotFoundError:
-            with pd.ExcelWriter(excel_buffer) as writer:  # fallback to openpyxl
+            with pd.ExcelWriter(excel_buffer) as writer:
                 hist_df.to_excel(writer, index=False, sheet_name="Snapshots")
 
         st.download_button(
