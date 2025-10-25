@@ -13,7 +13,7 @@ DB_PATH = "crypto_data.db"
 
 st.set_page_config(page_title="💹 Crypto Analyst Agent Dashboard", layout="wide")
 st.title("💹 Crypto Analyst Agent Dashboard")
-st.caption("Real-time and historical insights from your local SQLite database.")
+st.caption("Real-time and historical cryptocurrency insights through interactive visual analytics.")
 
 # =========================================================
 # 🧩 TABS
