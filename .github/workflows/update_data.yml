@@ -2,12 +2,12 @@ name: Update Crypto Data
 
 on:
   schedule:
-    # Runs twice a day at 6 AM and 6 PM UTC
+    # Runs twice a day: at 6 AM and 6 PM UTC
     - cron: "0 6,18 * * *"
   workflow_dispatch:  # allows manual trigger
 
 permissions:
-  contents: write  # ✅ allow GitHub Actions to push changes
+  contents: write  # ✅ allow github-actions bot to push commits
 
 jobs:
   update-data:
@@ -15,12 +15,10 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+        uses: actions/checkout@v3
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v4
         with:
           python-version: "3.10"
 
@@ -38,19 +36,4 @@ jobs:
           git config user.email "github-actions@github.com"
           git add .
           git commit -m "Auto update crypto data [$(date)]" || echo "No changes to commit"
-          git push https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git HEAD:main
-
-      # ✅ Webhook Notification
-      - name: Notify via Webhook
-        if: always()
-        run: |
-          STATUS="${{ job.status }}"
-          if [ "$STATUS" == "success" ]; then
-            MESSAGE="✅ Crypto Data Update completed successfully at $(date -u)"
-          else
-            MESSAGE="❌ Crypto Data Update failed at $(date -u). Check GitHub Actions logs."
-          fi
-
-          curl -X POST -H 'Content-type: application/json' \
-          --data "{\"text\": \"${MESSAGE}\"}" \
-          ${{ secrets.WEBHOOK_URL }}
+          git push
