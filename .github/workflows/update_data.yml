@@ -1,17 +1,17 @@
-name: Update Crypto Data and News
+name: Update Crypto Data
 
 on:
   schedule:
-    # ⏱ Run every 30 minutes for market data
+    # Run fetch_and_analyze.py every 30 minutes
     - cron: "*/30 * * * *"
-    # 📰 Run once daily at 6 AM UTC for news sentiment
+    # Run sentiment_rss.py once per day at 6 AM UTC
     - cron: "0 6 * * *"
   workflow_dispatch:  # allows manual trigger
 
 jobs:
-  update-data:
-    if: github.event.schedule == '*/30 * * * *'
+  update-crypto-data:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
@@ -23,11 +23,16 @@ jobs:
 
       - name: Install dependencies
         run: |
+          pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Run crypto data fetch script
-        run: |
-          python fetch_and_analyze.py
+      - name: Run fetch_and_analyze.py (every 30 min)
+        if: github.event.schedule == '*/30 * * * *'
+        run: python fetch_and_analyze.py
+
+      - name: Run sentiment_rss.py (once per day)
+        if: github.event.schedule == '0 6 * * *'
+        run: python sentiment_rss.py
 
       - name: Commit and push updated data
         run: |
@@ -35,32 +40,4 @@ jobs:
           git config user.email "github-actions@github.com"
           git add .
           git commit -m "Auto update crypto data [$(date)]" || echo "No changes to commit"
-          git push
-
-  update-news:
-    if: github.event.schedule == '0 6 * * *'
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v3
-
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: "3.10"
-
-      - name: Install dependencies
-        run: |
-          pip install -r requirements.txt
-
-      - name: Run news sentiment script
-        run: |
-          python sentiment_rss.py
-
-      - name: Commit and push updated news
-        run: |
-          git config user.name "github-actions"
-          git config user.email "github-actions@github.com"
-          git add .
-          git commit -m "Auto update crypto news [$(date)]" || echo "No changes to commit"
           git push
