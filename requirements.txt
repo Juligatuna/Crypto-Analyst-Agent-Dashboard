@@ -6,3 +6,4 @@ xlsxwriter
 altair
 openpyxl
 feedparser
+openai
