@@ -1,18 +1,17 @@
-name: Update Crypto Data
+name: Update Crypto Data and News
 
 on:
   schedule:
-    # Runs twice a day: at 6 AM and 6 PM UTC
-    - cron: "0 6,18 * * *"
+    # ⏱ Run every 30 minutes for market data
+    - cron: "*/30 * * * *"
+    # 📰 Run once daily at 6 AM UTC for news sentiment
+    - cron: "0 6 * * *"
   workflow_dispatch:  # allows manual trigger
-
-permissions:
-  contents: write  # ✅ allow github-actions bot to push commits
 
 jobs:
   update-data:
+    if: github.event.schedule == '*/30 * * * *'
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
@@ -26,7 +25,7 @@ jobs:
         run: |
           pip install -r requirements.txt
 
-      - name: Run data fetch script
+      - name: Run crypto data fetch script
         run: |
           python fetch_and_analyze.py
 
@@ -36,4 +35,32 @@ jobs:
           git config user.email "github-actions@github.com"
           git add .
           git commit -m "Auto update crypto data [$(date)]" || echo "No changes to commit"
+          git push
+
+  update-news:
+    if: github.event.schedule == '0 6 * * *'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.10"
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+
+      - name: Run news sentiment script
+        run: |
+          python sentiment_rss.py
+
+      - name: Commit and push updated news
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          git add .
+          git commit -m "Auto update crypto news [$(date)]" || echo "No changes to commit"
           git push
