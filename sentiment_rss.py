@@ -5,15 +5,20 @@ import feedparser
 from datetime import datetime
 from openai import OpenAI
 from dotenv import load_dotenv
+import json
 
 # =========================================================
 # 🔧 CONFIG
 # =========================================================
-load_dotenv()  # Load .env variables
+# Always load .env (works even if Streamlit runs from parent dir)
+load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), ".env"))
+
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 DB_PATH = "crypto_data.db"
 
-# Initialize OpenAI client
+# Initialize OpenAI client safely
+if not OPENAI_API_KEY:
+    raise ValueError("❌ OPENAI_API_KEY not found. Please check your .env file.")
 client = OpenAI(api_key=OPENAI_API_KEY)
 
 # RSS feeds to fetch
@@ -34,7 +39,7 @@ def fetch_crypto_news():
             published = getattr(entry, "published", None) or getattr(entry, "updated", None)
             try:
                 published_dt = datetime.strptime(published, "%a, %d %b %Y %H:%M:%S %Z") if published else None
-            except:
+            except Exception:
                 published_dt = None
 
             articles.append({
@@ -90,7 +95,16 @@ def analyze_sentiment(text):
             messages=[{"role": "user", "content": prompt}],
             temperature=0
         )
-        return response.choices[0].message.content
+        content = response.choices[0].message.content.strip()
+
+        # ✅ Safely parse JSON from the model output
+        try:
+            result = json.loads(content)
+        except json.JSONDecodeError:
+            result = {"sentiment": "Neutral", "reason": content}
+
+        return result
+
     except Exception as e:
         print(f"❌ GPT error: {e}")
         return {"sentiment": "Neutral", "reason": str(e)}
@@ -104,7 +118,7 @@ def generate_news_summary(df):
     
     titles_text = "\n".join(df["title"].tolist()[:10])
     prompt = f"""
-    Summarize the following crypto news headlines into a short, concise market summary in 2-3 sentences:
+    Summarize the following crypto news headlines into a short, concise market summary in 2–3 sentences:
     {titles_text}
     """
     try:
@@ -113,7 +127,7 @@ def generate_news_summary(df):
             messages=[{"role": "user", "content": prompt}],
             temperature=0.3
         )
-        return response.choices[0].message.content
+        return response.choices[0].message.content.strip()
     except Exception as e:
         print(f"❌ GPT error: {e}")
         return "⚠️ Could not generate summary."
@@ -126,13 +140,13 @@ def update_sentiments():
     cursor = conn.cursor()
     cursor.execute("SELECT id, title FROM crypto_news WHERE sentiment IS NULL")
     rows = cursor.fetchall()
+
     for row_id, title in rows:
         sentiment = analyze_sentiment(title)
         try:
-            # Store raw JSON string in DB
             cursor.execute(
                 "UPDATE crypto_news SET sentiment=? WHERE id=?",
-                (str(sentiment), row_id)
+                (json.dumps(sentiment), row_id)
             )
         except Exception as e:
             print(f"⚠️ DB update error: {e}")
