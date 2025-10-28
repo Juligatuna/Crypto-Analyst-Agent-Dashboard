@@ -3,7 +3,7 @@ name: Update News and Sentiment
 on:
   schedule:
     # Runs once daily at 6 AM UTC
-    - cron: "0 6 * * *"
+   # - cron: "0 6 * * *"
   workflow_dispatch:
 
 jobs:
