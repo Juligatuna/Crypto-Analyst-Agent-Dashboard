@@ -1,16 +1,20 @@
-
 import os
+import time
+import json
 import requests
 import pandas as pd
 from dotenv import load_dotenv
 
-# Load environment variables
+# =========================================================
+# 🔧 CONFIG
+# =========================================================
 load_dotenv()
 
-API_KEY = os.getenv("COINGECKO_API_KEY")  # Optional for future use
+API_KEY = os.getenv("COINGECKO_API_KEY")  # optional
 API_URL = "https://api.coingecko.com/api/v3/coins/markets"
+CACHE_FILE = "crypto_cache.json"
+CACHE_TTL = 300  # 5 minutes cache to respect rate limits
 
-# List of coins to track
 COINS = [
     ("bitcoin", "BTC"),
     ("ethereum", "ETH"),
@@ -21,37 +25,88 @@ COINS = [
     ("usd-coin", "USDC"),
     ("dogecoin", "DOGE"),
     ("staked-ether", "STETH"),
-    ("tron", "TRX")
+    ("tron", "TRX"),
 ]
 
+# =========================================================
+# 🧮 HELPERS
+# =========================================================
 def safe_pct(value):
-    """Format percentage values safely."""
     if value is None:
         return "N/A"
     try:
         return f"{value:.2f}%"
-    except:
+    except Exception:
         return "N/A"
 
+
+def load_cache():
+    """Return cached data if it's recent."""
+    if not os.path.exists(CACHE_FILE):
+        return None
+    try:
+        with open(CACHE_FILE, "r") as f:
+            cache = json.load(f)
+        if time.time() - cache.get("timestamp", 0) < CACHE_TTL:
+            return pd.DataFrame(cache["data"])
+    except Exception:
+        return None
+    return None
+
+
+def save_cache(df):
+    """Save data to local cache."""
+    try:
+        with open(CACHE_FILE, "w") as f:
+            json.dump({"timestamp": time.time(), "data": df.to_dict(orient="records")}, f)
+    except Exception:
+        pass
+
+
+# =========================================================
+# 📊 FETCH LIVE DATA (with retry + caching)
+# =========================================================
 def fetch_crypto_data():
-    """Fetch live crypto data from CoinGecko API."""
+    """Fetch live crypto data from CoinGecko, respecting rate limits."""
+    # Try cached data first
+    cached = load_cache()
+    if cached is not None:
+        print("🟡 Using cached market data (to avoid rate limit).")
+        return cached
+
     coin_ids = [c[0] for c in COINS]
     coin_symbols = {c[0]: c[1] for c in COINS}
 
     params = {
         "vs_currency": "usd",
         "ids": ",".join(coin_ids),
-        "price_change_percentage": "1h,24h,7d,14d,30d"
+        "price_change_percentage": "1h,24h,7d,14d,30d",
     }
 
-    try:
-        response = requests.get(API_URL, params=params, timeout=10)
-        response.raise_for_status()
-        data = response.json()
-    except requests.exceptions.RequestException as e:
-        print(f"⚠️ Error fetching data from CoinGecko: {e}")
-        return pd.DataFrame()
+    # Retry logic for 429 errors
+    for attempt in range(3):
+        try:
+            response = requests.get(API_URL, params=params, timeout=10)
+            if response.status_code == 429:
+                wait = 30 * (attempt + 1)
+                print(f"⚠️ Rate limit hit. Retrying in {wait}s...")
+                time.sleep(wait)
+                continue
 
+            response.raise_for_status()
+            data = response.json()
+            break
+
+        except requests.exceptions.RequestException as e:
+            print(f"⚠️ Error fetching data from CoinGecko: {e}")
+            if attempt < 2:
+                time.sleep(10)
+                continue
+            return cached if cached is not None else pd.DataFrame()
+    else:
+        return cached if cached is not None else pd.DataFrame()
+
+    # Parse results
     results = []
     for coin in data:
         cid = coin.get("id")
@@ -67,89 +122,69 @@ def fetch_crypto_data():
         })
 
     df = pd.DataFrame(results)
-
-    # ✅ Ensure timestamp is added for historical tracking
     df["timestamp"] = pd.Timestamp.now()
 
+    # Save cache for next calls
+    save_cache(df)
     return df
 
+
+# =========================================================
+# 🧠 MARKET INSIGHTS
+# =========================================================
 def generate_insights(df):
-    """Generate narrative insights and highlight key market movements."""
     if df.empty:
         return "⚠️ No data available from CoinGecko. Please try again later."
 
     narrative = "🧠 Insight: "
-
     major_coins = ["Bitcoin", "Ethereum", "BNB"]
     stablecoins = ["Tether", "USDC"]
     others = [coin for coin in df["Name"].tolist() if coin not in major_coins + stablecoins]
 
-    # Major coin trends
+    # Major coins
     major_trends = []
     for _, row in df.iterrows():
-        name = row["Name"]
-        price = row["💰 Price (USD)"]
-        change_24h = row.get("📉 24h Change", "0.00%") or "0.00%"
+        name, price, change_24h = row["Name"], row["💰 Price (USD)"], row["📉 24h Change"]
         try:
             change_val = float(change_24h.replace("%", ""))
         except:
-            change_val = 0.0
-
+            change_val = 0
         if name in major_coins:
             if change_val < 0:
-                major_trends.append(f"{name} has dipped slightly to {price}" if abs(change_val) < 2 else f"{name} has dropped {abs(change_val):.2f}% to {price}")
+                major_trends.append(f"{name} fell {abs(change_val):.2f}% to {price}")
             elif change_val > 0:
-                major_trends.append(f"{name} has risen {change_val:.2f}% to {price}")
+                major_trends.append(f"{name} rose {change_val:.2f}% to {price}")
             else:
-                major_trends.append(f"{name} remains stable at {price}")
-
+                major_trends.append(f"{name} stayed flat at {price}")
     if major_trends:
-        narrative += " ".join(major_trends) + ", reflecting recent market movements. "
+        narrative += " ".join(major_trends) + ". "
 
-    # Stablecoin trends
-    stable_trends = []
-    for _, row in df.iterrows():
-        name = row["Name"]
-        price = row["💰 Price (USD)"]
-        if name in stablecoins:
-            stable_trends.append(f"{name} remains relatively stable at {price}")
+    # Stablecoins
+    stable_trends = [f"{r['Name']} steady at {r['💰 Price (USD)']}" for _, r in df.iterrows() if r["Name"] in stablecoins]
     if stable_trends:
-        narrative += "Stablecoins like " + ", ".join(stable_trends) + ", indicating a flight to safety among investors. "
+        narrative += " ".join(stable_trends) + ". "
 
-    # Biggest gainer and loser
+    # Gainers and losers
     df_clean = df[df["📉 24h Change"] != "N/A"].copy()
     if not df_clean.empty:
-        df_clean["24h_val"] = pd.to_numeric(df_clean["📉 24h Change"].str.replace("%", ""), errors="coerce")
-        gainer_row = df_clean.loc[df_clean["24h_val"].idxmax()]
-        loser_row = df_clean.loc[df_clean["24h_val"].idxmin()]
-        narrative += f"The biggest 24h gainer is {gainer_row['Name']} ({gainer_row['📉 24h Change']}) and the biggest 24h loser is {loser_row['Name']} ({loser_row['📉 24h Change']}). "
+        df_clean["val24h"] = pd.to_numeric(df_clean["📉 24h Change"].str.replace("%", ""), errors="coerce")
+        gainer, loser = df_clean.loc[df_clean["val24h"].idxmax()], df_clean.loc[df_clean["val24h"].idxmin()]
+        narrative += f"Top gainer: {gainer['Name']} ({gainer['📉 24h Change']}), biggest loser: {loser['Name']} ({loser['📉 24h Change']}). "
 
-    # Other coins negative momentum
-    other_trends = []
-    for _, row in df.iterrows():
-        name = row["Name"]
-        change_24h = row.get("📉 24h Change", "0.00%") or "0.00%"
-        try:
-            change_val = float(change_24h.replace("%", ""))
-        except:
-            change_val = 0.0
-        if name in others and change_val < 0:
-            other_trends.append(name)
-    if other_trends:
-        narrative += ", ".join(other_trends) + " also reflect negative momentum, suggesting broader market hesitancy. "
-
-    narrative += "This subdued performance may stem from macroeconomic factors, such as inflation concerns and tightening monetary policies, which continue to influence investor sentiment. Overall, traders should remain vigilant as volatility remains a defining characteristic of the current crypto landscape."
-
+    narrative += "Overall, the market shows moderate volatility with traders adjusting to global sentiment."
     return narrative
 
+
+# =========================================================
+# 🧪 MAIN
+# =========================================================
 def main():
     print("Fetching cryptocurrency data...\n")
     df = fetch_crypto_data()
     print(df.to_string(index=False))
-
     print("\nMarket Insights:\n")
-    insights = generate_insights(df)
-    print(insights)
+    print(generate_insights(df))
+
 
 if __name__ == "__main__":
     main()
