@@ -4,6 +4,7 @@ import json
 import requests
 import pandas as pd
 from dotenv import load_dotenv
+import streamlit as st  # ✅ added for cache control integration with dashboard
 
 # =========================================================
 # 🔧 CONFIG
@@ -66,11 +67,21 @@ def save_cache(df):
 # =========================================================
 # 📊 FETCH LIVE DATA (with retry + caching)
 # =========================================================
-def fetch_crypto_data():
-    """Fetch live crypto data from CoinGecko, respecting rate limits."""
+def fetch_crypto_data(force_refresh=False):
+    """Fetch live crypto data from CoinGecko, respecting rate limits and optional refresh."""
+    
+    # ✅ Force clear Streamlit cache if user clicked "Refresh Data"
+    if force_refresh:
+        try:
+            st.cache_data.clear()
+            if os.path.exists(CACHE_FILE):
+                os.remove(CACHE_FILE)
+        except Exception:
+            pass
+
     # Try cached data first
     cached = load_cache()
-    if cached is not None:
+    if cached is not None and not force_refresh:
         print("🟡 Using cached market data (to avoid rate limit).")
         return cached
 
@@ -113,7 +124,7 @@ def fetch_crypto_data():
         results.append({
             "Name": coin.get("name", "N/A"),
             "Symbol": coin_symbols.get(cid, coin.get("symbol", "N/A").upper()),
-            "💰 Price (USD)": f"${coin.get('current_price', 0):,.2f}",
+            "Price": f"${coin.get('current_price', 0):,.2f}",  # ✅ aligned column name with dashboard
             "📈 1h Change": safe_pct(coin.get("price_change_percentage_1h_in_currency")),
             "📉 24h Change": safe_pct(coin.get("price_change_percentage_24h_in_currency")),
             "📆 7d Change": safe_pct(coin.get("price_change_percentage_7d_in_currency")),
@@ -130,7 +141,7 @@ def fetch_crypto_data():
 
 
 # =========================================================
-# 🧠 MARKET INSIGHTS
+# 🧠 MARKET INSIGHTS (unchanged)
 # =========================================================
 def generate_insights(df):
     if df.empty:
@@ -144,7 +155,7 @@ def generate_insights(df):
     # Major coins
     major_trends = []
     for _, row in df.iterrows():
-        name, price, change_24h = row["Name"], row["💰 Price (USD)"], row["📉 24h Change"]
+        name, price, change_24h = row["Name"], row["Price"], row["📉 24h Change"]
         try:
             change_val = float(change_24h.replace("%", ""))
         except:
@@ -160,7 +171,7 @@ def generate_insights(df):
         narrative += " ".join(major_trends) + ". "
 
     # Stablecoins
-    stable_trends = [f"{r['Name']} steady at {r['💰 Price (USD)']}" for _, r in df.iterrows() if r["Name"] in stablecoins]
+    stable_trends = [f"{r['Name']} steady at {r['Price']}" for _, r in df.iterrows() if r["Name"] in stablecoins]
     if stable_trends:
         narrative += " ".join(stable_trends) + ". "
 
@@ -176,11 +187,11 @@ def generate_insights(df):
 
 
 # =========================================================
-# 🧪 MAIN
+# 🧪 MAIN (unchanged for manual testing)
 # =========================================================
 def main():
     print("Fetching cryptocurrency data...\n")
-    df = fetch_crypto_data()
+    df = fetch_crypto_data(force_refresh=True)
     print(df.to_string(index=False))
     print("\nMarket Insights:\n")
     print(generate_insights(df))
