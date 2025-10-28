@@ -27,6 +27,8 @@ jobs:
 
       - name: Run sentiment/news update script
         run: python sentiment_rss.py
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
 
       - name: Commit and push updated news/sentiment data
         run: |
