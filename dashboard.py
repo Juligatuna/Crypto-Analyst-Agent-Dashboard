@@ -8,6 +8,8 @@ from io import BytesIO
 import altair as alt
 import datetime
 import os
+from dotenv import load_dotenv
+load_dotenv()
 
 # =========================================================
 # 🔧 CONFIG
