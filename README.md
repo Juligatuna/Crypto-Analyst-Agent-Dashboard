@@ -2,7 +2,7 @@
 
 An interactive Streamlit dashboard that analyzes cryptocurrency market data, visualizes key trends, and generates insights using real-time or cached data.
 
-## 🚀 Live Dashboard
+## Live Dashboard
 
 Explore the live Streamlit app here:  
 👉 [Crypto Analyst Agent Dashboard](https://crypto-analyst-agent-dashboard.streamlit.app/)
