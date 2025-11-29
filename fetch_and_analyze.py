@@ -124,7 +124,7 @@ def fetch_crypto_data(force_refresh=False):
         results.append({
             "Name": coin.get("name", "N/A"),
             "Symbol": coin_symbols.get(cid, coin.get("symbol", "N/A").upper()),
-            "Price": f"${coin.get('current_price', 0):,.2f}",  # ✅ aligned column name with dashboard
+            "Price": f"${coin.get('current_price', 0):,.2f}",
             "📈 1h Change": safe_pct(coin.get("price_change_percentage_1h_in_currency")),
             "📉 24h Change": safe_pct(coin.get("price_change_percentage_24h_in_currency")),
             "📆 7d Change": safe_pct(coin.get("price_change_percentage_7d_in_currency")),

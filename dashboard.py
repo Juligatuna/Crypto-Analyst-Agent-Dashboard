@@ -77,7 +77,7 @@ with tab1:
             st.cache_data.clear()  # Clears cached data for real-time refresh
             st.success("✅ Live data refreshed successfully!")
 
-        df = fa.fetch_crypto_data()
+        df = fa.fetch_crypto_data(force_refresh=refresh)
         if df is not None and not df.empty:
             # Save snapshot
             conn = sqlite3.connect(DB_PATH)
