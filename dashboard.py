@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import sqlite3
 import fetch_and_analyze as fa
-from sentiment_rss import fetch_crypto_news, analyze_sentiment
+from sentiment_rss import fetch_crypto_news, analyze_sentiment_batch as analyze_sentiment
 from openai import OpenAI
 from io import BytesIO
 import altair as alt
