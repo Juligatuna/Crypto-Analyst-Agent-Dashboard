@@ -117,6 +117,10 @@ def analyze_sentiment_batch(texts):
         print(f"❌ GPT error: {e}")
         return [{"sentiment": "Neutral", "reason": str(e)} for _ in texts]
 
+# ✅ Compatibility wrapper — do not change anything else
+def analyze_sentiment(text):
+    return analyze_sentiment_batch([text])[0]
+
 # =========================================================
 # 🧠 MULTI-THREADED SENTIMENT UPDATES
 # =========================================================
