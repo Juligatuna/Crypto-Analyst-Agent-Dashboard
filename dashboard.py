@@ -1,3 +1,13 @@
+# =========================================================
+# 🔧 FIX IMPORT ERROR
+# =========================================================
+import sys
+import os
+sys.path.append(os.path.dirname(__file__))  # ensures Python can find local modules
+
+# =========================================================
+# 🔧 IMPORTS
+# =========================================================
 import streamlit as st
 import pandas as pd
 import sqlite3
@@ -7,8 +17,9 @@ from openai import OpenAI
 from io import BytesIO
 import altair as alt
 import datetime
-import os
 from dotenv import load_dotenv
+
+# Load environment variables
 load_dotenv()
 
 # =========================================================
@@ -19,7 +30,10 @@ client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 st.set_page_config(page_title="💹 Crypto Analyst Agent Dashboard", layout="wide")
 st.title("💹 Crypto Analyst Agent Dashboard")
-st.caption("Empower your investment strategy with real-time analytics and historical trend visualization across multiple cryptocurrencies.")
+st.caption(
+    "Empower your investment strategy with real-time analytics "
+    "and historical trend visualization across multiple cryptocurrencies."
+)
 
 # =========================================================
 # 🧠 GPT Market Summary Helper
@@ -27,7 +41,6 @@ st.caption("Empower your investment strategy with real-time analytics and histor
 def generate_gpt_market_summary(df):
     """Generate a natural language market summary using GPT-4o-mini."""
     try:
-        # Ensure required columns exist
         available_cols = [c for c in ["Name", "📉 24h Change", "Price"] if c in df.columns]
         if not available_cols:
             raise ValueError("Required columns not found in DataFrame.")
