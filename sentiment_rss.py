@@ -4,20 +4,19 @@ import pandas as pd
 import feedparser
 from datetime import datetime
 from openai import OpenAI
-from dotenv import load_dotenv
 import json
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # =========================================================
 # 🔧 CONFIG
 # =========================================================
-load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), ".env"))
 
+# Use environment variable if available (Streamlit Secrets)
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 DB_PATH = "crypto_data.db"
 
 if not OPENAI_API_KEY:
-    raise ValueError("❌ OPENAI_API_KEY not found. Please check your .env file.")
+    raise ValueError("❌ OPENAI_API_KEY not found. Set it in environment variables or Secrets Manager.")
 
 client = OpenAI(api_key=OPENAI_API_KEY)
 
@@ -44,7 +43,8 @@ def fetch_crypto_news():
             articles.append({
                 "title": entry.get("title", "").strip(),
                 "link": entry.get("link", "").strip(),
-                "published": published_dt
+                "published": published_dt,
+                "content": entry.get("summary", "")  # include summary for sentiment
             })
 
     df = pd.DataFrame(articles).drop_duplicates(subset=["link"])
@@ -80,7 +80,6 @@ def fetch_crypto_news():
         "SELECT * FROM crypto_news WHERE sentiment IS NULL ORDER BY published DESC LIMIT 20",
         conn
     )
-
     conn.close()
     return new_articles
 
@@ -88,7 +87,10 @@ def fetch_crypto_news():
 # 🤖 SENTIMENT ANALYSIS
 # =========================================================
 def analyze_sentiment_batch(texts):
-    """Analyze up to 5 articles in one API call to speed up processing."""
+    """
+    Analyze up to 5 articles in one API call to speed up processing.
+    Always returns a list of dicts.
+    """
     combined_text = "\n\n".join([f"{i+1}. {t}" for i, t in enumerate(texts)])
     prompt = f"""
     Analyze the sentiment of the following crypto news headlines (Positive, Negative, Neutral).
@@ -110,14 +112,15 @@ def analyze_sentiment_batch(texts):
             if isinstance(result, list):
                 return result
             else:
-                return [{"sentiment": "Neutral", "reason": "Parsing error"} for _ in texts]
+                # fallback for invalid format
+                return [{"headline": t, "sentiment": "Neutral", "reason": "Parsing error"} for t in texts]
         except json.JSONDecodeError:
-            return [{"sentiment": "Neutral", "reason": "Invalid JSON"} for _ in texts]
+            return [{"headline": t, "sentiment": "Neutral", "reason": "Invalid JSON"} for t in texts]
     except Exception as e:
         print(f"❌ GPT error: {e}")
-        return [{"sentiment": "Neutral", "reason": str(e)} for _ in texts]
+        return [{"headline": t, "sentiment": "Neutral", "reason": str(e)} for t in texts]
 
-# ✅ Compatibility wrapper — do not change anything else
+# ✅ Compatibility wrapper — returns single dict
 def analyze_sentiment(text):
     return analyze_sentiment_batch([text])[0]
 
@@ -143,6 +146,7 @@ def update_sentiments(df):
         sentiments = analyze_sentiment_batch(texts)
         for (row_id, title), sentiment in zip(batch, sentiments):
             try:
+                # ✅ Store as JSON string
                 cursor.execute(
                     "UPDATE crypto_news SET sentiment=? WHERE id=?",
                     (json.dumps(sentiment), row_id)
@@ -154,12 +158,12 @@ def update_sentiments(df):
     print("✅ Sentiment updates complete.")
 
 # =========================================================
-# 📝 GENERATE MARKET SUMMARY
+# 📝 GENERATE NEWS SUMMARY
 # =========================================================
 def generate_news_summary(df):
     if df.empty:
         return "⚠️ No new news to summarize."
-    
+
     titles_text = "\n".join(df["title"].head(10).tolist())
     prompt = f"""
     Summarize the following crypto news headlines into a short, concise market summary in 2–3 sentences:
@@ -177,13 +181,13 @@ def generate_news_summary(df):
         return "⚠️ Could not generate summary."
 
 # =========================================================
-# ✅ MAIN FUNCTION
+# ✅ MAIN FUNCTION (optional for testing)
 # =========================================================
 def main():
     df = fetch_crypto_news()
     update_sentiments(df)
     summary = generate_news_summary(df)
-    
+
     if not df.empty:
         top_links = df[["title", "link"]].head(10)
         print(summary)
