@@ -1,13 +1,7 @@
-# =========================================================
-# 🔧 FIX IMPORT ERROR
-# =========================================================
 import sys
 import os
-sys.path.append(os.path.dirname(__file__))  # ensures Python can find local modules
+sys.path.append(os.path.dirname(__file__))
 
-# =========================================================
-# 🔧 IMPORTS
-# =========================================================
 import streamlit as st
 import pandas as pd
 import sqlite3
@@ -18,8 +12,8 @@ from io import BytesIO
 import altair as alt
 import datetime
 from dotenv import load_dotenv
+import json
 
-# Load environment variables
 load_dotenv()
 
 # =========================================================
@@ -30,16 +24,12 @@ client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 st.set_page_config(page_title="💹 Crypto Analyst Agent Dashboard", layout="wide")
 st.title("💹 Crypto Analyst Agent Dashboard")
-st.caption(
-    "Empower your investment strategy with real-time analytics "
-    "and historical trend visualization across multiple cryptocurrencies."
-)
+st.caption("Empower your investment strategy with real-time analytics and historical trend visualization across multiple cryptocurrencies.")
 
 # =========================================================
 # 🧠 GPT Market Summary Helper
 # =========================================================
 def generate_gpt_market_summary(df):
-    """Generate a natural language market summary using GPT-4o-mini."""
     try:
         available_cols = [c for c in ["Name", "📉 24h Change", "Price"] if c in df.columns]
         if not available_cols:
@@ -87,17 +77,16 @@ with tab1:
 
     try:
         if refresh:
-            st.cache_data.clear()  # Clears cached data for real-time refresh
+            st.cache_data.clear()
             st.success("✅ Live data refreshed successfully!")
 
         df = fa.fetch_crypto_data(force_refresh=refresh)
+
         if df is not None and not df.empty:
-            # Save snapshot
             conn = sqlite3.connect(DB_PATH)
             df.to_sql("crypto_snapshots", conn, if_exists="append", index=False)
             conn.close()
 
-            # Prepare table for styling
             df_clean = df.copy()
             df_clean["24h_val"] = pd.to_numeric(
                 df_clean["📉 24h Change"].str.replace("%", ""), errors="coerce"
@@ -130,13 +119,11 @@ with tab1:
 
             st.dataframe(df.style.apply(highlight_gainers_losers, axis=1))
 
-            # --- GPT Market Insights ---
             st.markdown("---")
             st.subheader("🤖 Market Insights")
             gpt_summary = generate_gpt_market_summary(df)
             st.markdown(gpt_summary)
 
-            # Save sentiment in DB
             conn = sqlite3.connect(DB_PATH)
             cursor = conn.cursor()
             cursor.execute(
@@ -149,23 +136,25 @@ with tab1:
                 """
             )
             cursor.execute(
-                "INSERT INTO crypto_sentiments (sentiment) VALUES (?)", (gpt_summary,)
+                "INSERT INTO crypto_sentiments (sentiment) VALUES (?)",
+                (gpt_summary,),
             )
             conn.commit()
             conn.close()
 
-            # --- NEWS & SENTIMENT BELOW INSIGHTS ---
+            # --- NEWS & SENTIMENT ---
             st.markdown("---")
             st.subheader("🗞 Latest Crypto News & Sentiment")
 
             try:
                 news_df = fetch_crypto_news()
+
                 if news_df.empty:
                     st.info("⚠️ No news articles fetched.")
                 else:
-                    # Ensure DB table exists
                     conn = sqlite3.connect(DB_PATH)
                     cursor = conn.cursor()
+
                     cursor.execute(
                         """
                         CREATE TABLE IF NOT EXISTS crypto_news (
@@ -179,26 +168,25 @@ with tab1:
                     )
                     conn.commit()
 
+                    # ✅ ALWAYS store JSON text — never raw lists/dicts
                     for _, row in news_df.head(10).iterrows():
                         sentiment = analyze_sentiment(str(row.get("content", "")))
-
-                        # ✅ FIX: convert dict-type sentiment safely
-                        if isinstance(sentiment, dict):
-                            sentiment = str(sentiment)
+                        sentiment_text = json.dumps(sentiment, ensure_ascii=False)
 
                         cursor.execute(
                             "INSERT INTO crypto_news (title, link, sentiment) VALUES (?, ?, ?)",
-                            (row["title"], row["link"], sentiment),
+                            (row["title"], row["link"], sentiment_text),
                         )
+
                     conn.commit()
                     conn.close()
 
                     for _, row in news_df.head(10).iterrows():
                         st.markdown(f"- [{row['title']}]({row['link']})")
 
-                    # GPT News Summary
                     st.markdown("---")
                     st.subheader("🧭 News Summary")
+
                     try:
                         headlines = "\n".join(news_df["title"].head(10).tolist())
                         response = client.chat.completions.create(
@@ -215,6 +203,7 @@ with tab1:
                         )
                         summary = response.choices[0].message.content.strip()
                         st.write(summary)
+
                     except Exception as e:
                         st.error(f"❌ News Summary Error: {e}")
 
@@ -223,6 +212,7 @@ with tab1:
 
         else:
             st.warning("⚠️ No live data fetched.")
+
     except Exception as e:
         st.error(f"❌ Error fetching data: {e}")
 
